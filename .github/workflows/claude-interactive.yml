@@ -1,0 +1,47 @@
+# Mirrors JetBrains/ideavim pattern
+# Triggers on /claude-review comment, checks out PR branch
+name: Claude Code Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-review:
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/claude-review')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 1
+
+      - name: Check for POC evidence (before Claude)
+        run: |
+          echo "=== PRE-RUN CHECK ==="
+          echo "=== .claude/settings.json contents ==="
+          cat .claude/settings.json 2>/dev/null || echo "No .claude/settings.json found"
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR briefly. Just say "LGTM" if it looks fine.
+          claude_args: '--max-turns 3'
+
+      - name: Check for POC evidence (after Claude)
+        if: always()
+        run: |
+          echo "=== POST-RUN CHECK ==="
+          ls -la /tmp/claude-poc-* 2>/dev/null || echo "No POC files found"
+          cat /tmp/claude-poc-proof.txt 2>/dev/null || echo "No proof file"
+          cat /tmp/claude-poc-hook.txt 2>/dev/null || echo "No hook file"
+          cat /tmp/claude-poc-env.txt 2>/dev/null || echo "No env file"
